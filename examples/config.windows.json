@@ -1,0 +1,38 @@
+{
+  "grace_period_seconds": 5,
+  "api_address": "127.0.0.1:8080",
+  "processes": [
+    {
+      "name": "worker-estable",
+      "command": "cmd.exe",
+      "args": ["/c", "echo [worker-estable] Iniciando tarea... & ping -n 2 127.0.0.1 > nul & echo [worker-estable] Tarea completada con exito."],
+      "working_dir": ".",
+      "environment": {
+        "APP_ENV": "development"
+      },
+      "restart_policy": "always",
+      "max_retries": 5,
+      "backoff": {
+        "initial_seconds": 1,
+        "factor": 2.0,
+        "max_seconds": 10
+      }
+    },
+    {
+      "name": "worker-falla",
+      "command": "cmd.exe",
+      "args": ["/c", "echo [worker-falla] Simulando fallo... & exit /b 1"],
+      "working_dir": ".",
+      "environment": {
+        "APP_ENV": "test"
+      },
+      "restart_policy": "on-failure",
+      "max_retries": 3,
+      "backoff": {
+        "initial_seconds": 1,
+        "factor": 2.0,
+        "max_seconds": 10
+      }
+    }
+  ]
+}
