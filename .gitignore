@@ -15,3 +15,7 @@
 .vscode/
 *.swp
 *~
+
+# Documentos guía / internos no a subir
+PLAN_CONSTRUCCION_GO_PROCESS_SUPERVISOR_CORREGIDO.md
+proyectos_go_examen_final.md
