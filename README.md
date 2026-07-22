@@ -4,7 +4,7 @@
 
 [![Go Version](https://img.shields.io/badge/Go-1.21%2B-00ADD8?style=flat&logo=go)](https://golang.org)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Status](https://img.shields.io/badge/Estado-Parte%202%20Completada-success)](docs/Documentacion-parte2.md)
+[![Status](https://img.shields.io/badge/Estado-Parte%203%20Completada-success)](docs/partes/Documentacion-parte3.md)
 
 ---
 
