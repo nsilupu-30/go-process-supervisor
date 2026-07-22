@@ -1,0 +1,38 @@
+{
+  "grace_period_seconds": 8,
+  "api_address": "127.0.0.1:8080",
+  "processes": [
+    {
+      "name": "worker-estable",
+      "command": "/bin/sh",
+      "args": ["examples/workers/stable-worker.sh"],
+      "working_dir": ".",
+      "environment": {
+        "APP_ENV": "development"
+      },
+      "restart_policy": "always",
+      "max_retries": 5,
+      "backoff": {
+        "initial_seconds": 1,
+        "factor": 2.0,
+        "max_seconds": 30
+      }
+    },
+    {
+      "name": "worker-falla",
+      "command": "/bin/sh",
+      "args": ["examples/workers/failing-worker.sh"],
+      "working_dir": ".",
+      "environment": {
+        "APP_ENV": "test"
+      },
+      "restart_policy": "on-failure",
+      "max_retries": 3,
+      "backoff": {
+        "initial_seconds": 1,
+        "factor": 2.0,
+        "max_seconds": 10
+      }
+    }
+  ]
+}
