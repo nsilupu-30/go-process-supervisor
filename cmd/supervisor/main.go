@@ -8,6 +8,7 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/nsilupu-30/go-process-supervisor/internal/api"
 	"github.com/nsilupu-30/go-process-supervisor/internal/config"
 	"github.com/nsilupu-30/go-process-supervisor/internal/logging"
 	"github.com/nsilupu-30/go-process-supervisor/internal/supervisor"
@@ -84,10 +85,17 @@ func runStartCommand(args []string) {
 
 	logger := logging.NewProcessLogger()
 	sup := supervisor.NuevoSupervisor(*cfg, logger)
+	apiServer := api.NewServer(cfg.APIAddress, sup)
 	ctx := context.Background()
 
 	logger.LogInfo("SUPERVISOR", fmt.Sprintf("Iniciando ejecución de %d proceso(s) desde %s...", len(cfg.Processes), *configPath))
+	logger.LogInfo("API", fmt.Sprintf("iniciando servidor HTTP en %s", cfg.APIAddress))
 
+	go func() {
+		if err := apiServer.Start(); err != nil {
+			logger.LogError("API", err.Error())
+		}
+	}()
 	go sup.Iniciar(ctx)
 
 	// Esperar Ctrl+C
@@ -95,6 +103,11 @@ func runStartCommand(args []string) {
 
 	ctxCancelado, cancel := context.WithCancel(ctx)
 	defer cancel()
+
+	if err := apiServer.Stop(ctxCancelado); err != nil {
+		logger.LogError("API", err.Error())
+	}
+
 	sup.Detener(ctxCancelado)
 	logger.LogInfo("SUPERVISOR", "Supervisor detenido correctamente.")
 }
