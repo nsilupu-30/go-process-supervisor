@@ -64,6 +64,27 @@ Enviar `SIGHUP` al proceso del supervisor recarga la configuración sin reinicia
 
 ---
 
+## 🖥️ Ejemplo de Salida en Consola
+
+```text
+[18:11:54] [SUPERVISOR] [INFO] Iniciando ejecución de 2 proceso(s) desde examples/config.example.json...
+[18:11:54] [worker-estable] [INFO] proceso iniciado correctamente con PID 19992
+[18:11:54] [worker-falla] [INFO] proceso iniciado correctamente con PID 25112
+[18:11:54] [worker-estable] [STDOUT] Iniciando tarea...
+[18:11:54] [worker-falla] [STDOUT] Simulando fallo...
+[18:11:55] [worker-falla] [INFO] proceso finalizó con código de salida 1
+[18:11:55] [worker-falla] [INFO] reinicio programado en 1s
+[18:11:55] [worker-estable] [STDOUT] Tarea completada con éxito.
+[18:11:56] [worker-estable] [INFO] proceso finalizó exitosamente (exit code 0)
+[18:11:56] [worker-falla] [INFO] proceso iniciado correctamente con PID 28440
+[18:12:00] [SUPERVISOR] [INFO] Recibida señal de apagado, propagando a procesos hijos...
+[18:12:00] [worker-estable] [INFO] proceso detenido correctamente
+[18:12:00] [worker-falla] [INFO] proceso detenido correctamente
+[18:12:00] [SUPERVISOR] [INFO] Todos los procesos han finalizado. Apagado completo.
+```
+
+---
+
 ## 📁 Estructura del Proyecto
 
 ```text
