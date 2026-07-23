@@ -5,11 +5,12 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"sync"
+	"os/signal"
+	"syscall"
 
 	"github.com/nsilupu-30/go-process-supervisor/internal/config"
 	"github.com/nsilupu-30/go-process-supervisor/internal/logging"
-	"github.com/nsilupu-30/go-process-supervisor/internal/process"
+	"github.com/nsilupu-30/go-process-supervisor/internal/supervisor"
 )
 
 func main() {
@@ -82,27 +83,20 @@ func runStartCommand(args []string) {
 	}
 
 	logger := logging.NewProcessLogger()
-	runner := process.NewRunner()
+	sup := supervisor.NuevoSupervisor(*cfg, logger)
 	ctx := context.Background()
 
 	logger.LogInfo("SUPERVISOR", fmt.Sprintf("Iniciando ejecución de %d proceso(s) desde %s...", len(cfg.Processes), *configPath))
 
-	var wg sync.WaitGroup
-	for _, procCfg := range cfg.Processes {
-		wg.Add(1)
-		go func(pConfig config.ProcessConfig) {
-			defer wg.Done()
-			res, err := runner.Run(ctx, pConfig, logger)
-			if err != nil {
-				logger.LogError(pConfig.Name, fmt.Errorf("error grave en runner: %w", err).Error())
-				return
-			}
-			logger.LogInfo(pConfig.Name, fmt.Sprintf("Resumen de ejecución: PID=%d | ExitCode=%d | Duración=%v", res.PID, res.ExitCode, res.Duration))
-		}(procCfg)
-	}
+	go sup.Iniciar(ctx)
 
-	wg.Wait()
-	logger.LogInfo("SUPERVISOR", "Todos los procesos han finalizado la ejecución de demostración de la Parte 2.")
+	// Esperar Ctrl+C
+	esperarSenal()
+
+	ctxCancelado, cancel := context.WithCancel(ctx)
+	defer cancel()
+	sup.Detener(ctxCancelado)
+	logger.LogInfo("SUPERVISOR", "Supervisor detenido correctamente.")
 }
 
 func printUsage() {
@@ -112,4 +106,10 @@ func printUsage() {
 	fmt.Println("  validate --config <ruta_json>   Valida la sintaxis y reglas del archivo de configuración")
 	fmt.Println("  run --config <ruta_json>        Ejecuta los procesos de la configuración y muestra sus logs")
 	fmt.Println("  version                         Muestra la versión del supervisor")
+}
+
+func esperarSenal() {
+	signalChan := make(chan os.Signal, 1)
+	signal.Notify(signalChan, syscall.SIGINT, syscall.SIGTERM)
+	<-signalChan
 }
