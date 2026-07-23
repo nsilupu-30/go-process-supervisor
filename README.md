@@ -4,7 +4,7 @@
 
 [![Go Version](https://img.shields.io/badge/Go-1.21%2B-00ADD8?style=flat&logo=go)](https://golang.org)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Status](https://img.shields.io/badge/Estado-Parte%205%20Completada-success)](docs/partes/Documentacion-parte5.md)
+[![Status](https://img.shields.io/badge/Estado-Parte%206%20Completada-success)](docs/partes/Documentacion-parte6.md)
 
 ---
 
@@ -23,7 +23,7 @@ Ahora incluye coordinación concurrente (`Parte 4`) y manejo de señales del sis
 - [x] **Parte 3 — Monitoreo, Reinicios y Backoff:** Políticas `always`, `on-failure`, `never`, contadores de reintentos y cálculo exponencial.
 - [x] **Parte 4 — Supervisor Concurrente:** Máquina de estados segura por goroutines, canal de comandos y sincronización thread-safe.
 - [x] **Parte 5 — Manejo de Señales y Recarga:** Captura de `SIGINT`, `SIGTERM`, `SIGHUP` con periodo de gracia y recarga dinámica.
-- [ ] **Parte 6 — API HTTP Local & Dashboard:** Endpoints REST (`/health`, `/processes`) y entregables finales.
+- [x] **Parte 6 — API HTTP Local & Dashboard:** Endpoints REST (`/health`, `/processes`) y entregables finales.
 
 ---
 
@@ -34,10 +34,9 @@ Ahora incluye coordinación concurrente (`Parte 4`) y manejo de señales del sis
 
 ### 1. Compilación y Verificación
 ```bash
-gofmt -w .
-go build ./...
-go test -v ./...
-go test -race ./...
+make build
+make test
+make race
 ```
 
 ### 2. Comandos CLI Disponibles
@@ -61,6 +60,18 @@ Presionar `Ctrl+C` envía `SIGINT`. El supervisor propaga la señal a los proces
 
 #### D. Recarga dinámica (`SIGHUP`)
 Enviar `SIGHUP` al proceso del supervisor recarga la configuración sin reiniciar los procesos en ejecución. Si la nueva configuración es inválida, se conserva la anterior.
+
+#### E. API HTTP local
+El supervisor expone un servidor HTTP en la dirección configurada en `api_address`.
+
+Ejemplos:
+```bash
+curl http://127.0.0.1:8080/health
+curl http://127.0.0.1:8080/processes
+curl http://127.0.0.1:8080/processes/<name>
+curl -X POST http://127.0.0.1:8080/processes/<name>/restart
+curl -X POST http://127.0.0.1:8080/reload
+```
 
 ---
 
