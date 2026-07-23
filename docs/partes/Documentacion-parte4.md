@@ -9,13 +9,13 @@ Coordinar múltiples procesos hijos de forma concurrente, thread-safe y sin dead
 5. Canal de comandos con propietario único para evitar condiciones de carrera.
 
 ## 2. Archivos Creados y Modificados
-- `internal/supervisor/supervisor.go`: `Supervisor` y `Supervisar` públicos.
+- `internal/supervisor/supervisor.go`: `Supervisor`, `NuevoSupervisor`, `Iniciar`, `Detener`, `ObtenerSnapshots`.
 - `internal/supervisor/manager.go`: `AdministradorProceso`, canal de comandos, ciclo de vida y reinicio con backoff.
 - `internal/supervisor/state.go`: Tipos `EstadoProceso`, `EventoProceso`, máquina de estados pura y transiciones válidas.
 - `internal/supervisor/snapshot.go`: `SnapshotProceso`, `almacenSnapshots` con `sync.RWMutex` para lecturas concurrentes sin data races.
-- `cmd/supervisor/main.go`: integración del `Supervisor` en el comando `run` y espera de señales en main.
 - `internal/supervisor/supervisor_test.go`: pruebas concurrentes y de cierre.
-- `Documentacion-parte4.md`: este documento.
+- `cmd/supervisor/main.go`: integración del `Supervisor` en el comando `run` y espera de señales.
+- `docs/partes/Documentacion-parte4.md`: este documento.
 
 ## 3. Tipos Exportados
 
@@ -63,23 +63,19 @@ Métodos públicos:
 
 ```
 CREADO
-  → INICIANDO   (EventoProcesoIniciado)
+  -> INICIANDO   (EventoProcesoIniciado)
 
 INICIANDO
-  → ESPERA   (EventoProcesoSalido | EventoProcesoFallido)
-  → ESPERA   (EventoProcesoFallido en fallo de ejecución)
+  -> ESPERA   (EventoProcesoSalido o EventoProcesoFallido)
 
 ESPERA
-  → INICIANDO   (EventoProcesoIniciado tras backoff)
-
-EJECUTANDO
-  → DETENIENDO   (EventoProcesoDeteniendo)
+  -> INICIANDO   (EventoProcesoIniciado tras backoff)
 
 DETENIENDO
-  → DETENIDO   (EventoProcesoDetenido)
+  -> DETENIDO   (EventoProcesoDetenido)
 
 APAGADO_SOLICITADO
-  → DETENIENDO   (si no está detenido ni fallido)
+  -> DETENIENDO   (si no está detenido ni fallido)
 ```
 
 Reglas:
@@ -91,28 +87,26 @@ Reglas:
 ## 5. Modelo de concurrencia
 
 ### Propietarios de canales
-- Cada `AdministradorProceso` es el único escritor y lector de su propio `canal comando` (buffered de 1).
-- El `Supervisor` solo envía comandos iniciales; la goroutine del manager los consume.
-- El método `EnviarComando` usa `select` con `default` para no bloquear si el canal está lleno.
+- Cada `AdministradorProceso` es el único escritor y lector de su propio canal de comandos.
+- El `Supervisor` envía el comando inicial y delega; la goroutine del manager consume.
+- `EnviarComando` usa `select` con `default` para no bloquear si el canal está lleno.
 
 ### Thread-safety
 - `sync.Mutex` protege el flag `detenido` y la escritura en el canal del manager.
 - `sync.RWMutex` en `almacenSnapshots`: escrituras exclusivas, lecturas concurrentes.
 - El `Supervisor` coordina goroutines con `sync.WaitGroup`.
-- Todo bloqueo que pueda cancelarse usa `context.Context`.
 
 ### Cierre limpio
-- `IniciarCicloVida` cierra su defer: marca `detenido = true` y cierra el canal.
+- `IniciarCicloVida` cierra en defer: marca `detenido = true` y cierra su canal.
 - `ctx.Done()` interrumpe backoff y el loop principal.
-- El comando `run` en main escucha `SIGINT`/`SIGTERM`, crea un `context.WithCancel` y propaga cancelación.
+- El comando `run` escucha `SIGINT`/`SIGTERM`, crea un `context.WithCancel` y propaga cancelación.
 
 ## 6. Decisiones técnicas
 1. Máquina de estados pura: sin lógica de tiempo ni E/S, ni dependencias externas.
 2. Snapshots como proyección inmutable de estado interno: la API lee snapshots, nunca el estado mutable.
-3. Canal de comandos con buffer 1 y non-blocking send: evita deadlocks si el manager está ocupado.
-4. Reinicio recursivo: `ejecutarProceso` se llama a sí misma tras backoff, cancelable por `ctx`.
-5. No se usa `sync.WaitGroup` dentro del manager para esperar el proceso; el propio `ctx` orquesta la cancelación.
-6. El `Supervisor.Iniciar` usa `sync.WaitGroup` para esperar a todos los managers, no `time.Sleep` ni canales extra.
+3. Canal de comandos con buffer y non-blocking send: evita deadlocks si el manager está ocupado.
+4. Reinicio recursivo: `ejecutarProceso` se vuelve a llamar tras backoff, cancelable por `ctx`.
+5. El `Supervisor.Iniciar` usa `sync.WaitGroup` para esperar a todos los managers.
 
 ## 7. Pruebas y validación
 Suite en `internal/supervisor/supervisor_test.go`:
@@ -134,4 +128,3 @@ gofmt -w .
 - La recarga dinámica (`SIGHUP`) aún no está implementada (Parte 5).
 - La API HTTP no expone aún los nuevos endpoints (Parte 6).
 - `BackoffConfig.MaxRetries` se evalúa en `manager.go`, no en la máquina de estados.
-- En Windows algunos comandos pueden requerir `cmd.exe /c` explícito.
