@@ -21,16 +21,16 @@ type SnapshotProceso struct {
 }
 
 type almacenSnapshots struct {
-	mu            sync.RWMutex
-	config        config.ProcessConfig
-	estado        EstadoProceso
-	pid           int
-	reintentos    int
-	salida        int
+	mu           sync.RWMutex
+	config       config.ProcessConfig
+	estado       EstadoProceso
+	pid          int
+	reintentos   int
+	salida       int
 	mensajeError string
-	inicio        time.Time
-	salidaT       time.Time
-	siguiente     *time.Time
+	inicio       time.Time
+	salidaT      time.Time
+	siguiente    *time.Time
 }
 
 func nuevoAlmacenSnapshots(cfg config.ProcessConfig) *almacenSnapshots {
