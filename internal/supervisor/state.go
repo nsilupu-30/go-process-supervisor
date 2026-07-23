@@ -5,13 +5,13 @@ import "context"
 type EstadoProceso string
 
 const (
-	EstadoCreado    EstadoProceso = "creado"
-	EstadoIniciando EstadoProceso = "iniciando"
+	EstadoCreado     EstadoProceso = "creado"
+	EstadoIniciando  EstadoProceso = "iniciando"
 	EstadoEjecutando EstadoProceso = "ejecutando"
-	EstadoEspera    EstadoProceso = "espera"
+	EstadoEspera     EstadoProceso = "espera"
 	EstadoDeteniendo EstadoProceso = "deteniendo"
-	EstadoDetenido  EstadoProceso = "detenido"
-	EstadoFallido   EstadoProceso = "fallido"
+	EstadoDetenido   EstadoProceso = "detenido"
+	EstadoFallido    EstadoProceso = "fallido"
 )
 
 type EventoProceso string
@@ -27,7 +27,7 @@ const (
 )
 
 type estadoMaquina struct {
-	estado         EstadoProceso
+	estado             EstadoProceso
 	cantidadReintentos int
 }
 
