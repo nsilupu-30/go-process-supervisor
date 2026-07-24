@@ -23,6 +23,7 @@ type comando struct {
 	tipo comandoManager
 	ctx  context.Context
 }
+
 type AdministradorProceso struct {
 	config   config.ProcessConfig
 	logger   logging.Logger
@@ -44,6 +45,7 @@ func NuevoAdministradorProceso(cfg config.ProcessConfig, logger logging.Logger) 
 		canal:    make(chan comando, 1),
 	}
 }
+
 func (a *AdministradorProceso) EnviarComando(tipo comandoManager, ctx context.Context) {
 	a.mu.Lock()
 	if a.detenido {
@@ -51,14 +53,17 @@ func (a *AdministradorProceso) EnviarComando(tipo comandoManager, ctx context.Co
 		return
 	}
 	a.mu.Unlock()
+
 	select {
 	case a.canal <- comando{tipo: tipo, ctx: ctx}:
 	default:
 	}
 }
+
 func (a *AdministradorProceso) ObtenerSnapshot() SnapshotProceso {
 	return a.almacen.obtenerSnapshot()
 }
+
 func (a *AdministradorProceso) IniciarCicloVida(ctx context.Context) {
 	defer func() {
 		a.mu.Lock()
@@ -66,7 +71,9 @@ func (a *AdministradorProceso) IniciarCicloVida(ctx context.Context) {
 		a.mu.Unlock()
 		close(a.canal)
 	}()
+
 	a.EnviarComando(comandoIniciar, ctx)
+
 	for {
 		select {
 		case cmd, ok := <-a.canal:
@@ -74,18 +81,18 @@ func (a *AdministradorProceso) IniciarCicloVida(ctx context.Context) {
 				return
 			}
 			switch cmd.tipo {
+			case comandoIniciar:
+				if a.maquina.actual() == EstadoCreado {
+					a.bucleEjecucion(ctx)
+				}
+			case comandoReiniciar:
+				a.maquina = nuevoEstadoMaquina()
+				a.bucleEjecucion(ctx)
 			case comandoDetener:
 				a.almacen.marcarDeteniendo()
 				a.maquina.transicionar(EventoProcesoDeteniendo)
-			case comandoReiniciar:
-				a.almacen.marcarDeteniendo()
-				a.maquina.transicionar(EventoProcesoDeteniendo)
-				a.maquina = nuevoEstadoMaquina()
-				a.ejecutarProceso(cmd.ctx)
-			case comandoIniciar:
-				if a.maquina.actual() == EstadoCreado {
-					a.ejecutarProceso(cmd.ctx)
-				}
+				a.almacen.marcarDetenido()
+				return
 			}
 		case <-ctx.Done():
 			a.almacen.marcarDeteniendo()
@@ -94,51 +101,123 @@ func (a *AdministradorProceso) IniciarCicloVida(ctx context.Context) {
 		}
 	}
 }
-func (a *AdministradorProceso) ejecutarProceso(ctx context.Context) {
-	a.maquina.transicionar(EventoProcesoIniciado)
-	a.logger.LogInfo(a.config.Name, "iniciando proceso...")
-	resultado, err := a.corredor.Run(ctx, a.config, a.logger)
-	if err != nil {
-		a.logger.LogError(a.config.Name, "error al ejecutar: "+err.Error())
-		a.almacen.marcarFallido()
-		a.maquina.transicionar(EventoProcesoFallido)
-		return
+
+func (a *AdministradorProceso) bucleEjecucion(ctx context.Context) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
+
+		procCtx, procCancel := context.WithCancel(ctx)
+		cmdChan := make(chan comandoManager, 1)
+
+		go func() {
+			select {
+			case cmd, ok := <-a.canal:
+				if ok {
+					cmdChan <- cmd.tipo
+					procCancel()
+				}
+			case <-procCtx.Done():
+			}
+		}()
+
+		a.maquina.transicionar(EventoProcesoIniciado)
+		a.logger.LogInfo(a.config.Name, "iniciando proceso...")
+
+		resultado, err := a.corredor.Run(procCtx, a.config, a.logger)
+		procCancel()
+
+		var recvedCmd comandoManager
+		select {
+		case recvedCmd = <-cmdChan:
+		default:
+		}
+
+		if recvedCmd == comandoDetener {
+			a.almacen.marcarDetenido()
+			a.maquina.transicionar(EventoProcesoDeteniendo)
+			return
+		}
+		if recvedCmd == comandoReiniciar {
+			a.logger.LogInfo(a.config.Name, "proceso reiniciado manualmente por API")
+			a.almacen.marcarDeteniendo()
+			a.maquina.transicionar(EventoProcesoDeteniendo)
+			a.maquina = nuevoEstadoMaquina()
+			continue
+		}
+
+		if err != nil {
+			a.logger.LogError(a.config.Name, "error al ejecutar: "+err.Error())
+			a.almacen.marcarFallido()
+			a.maquina.transicionar(EventoProcesoFallido)
+			return
+		}
+
+		a.almacen.actualizarDesdeResultado(*resultado)
+		a.almacen.marcarIniciado(resultado.PID)
+
+		exito := resultado.Success() && !resultado.TerminatedBySignal
+		if exito {
+			a.almacen.marcarEjecutando()
+			a.maquina.transicionar(EventoProcesoSalido)
+		} else {
+			a.almacen.marcarFallido()
+			a.maquina.transicionar(EventoProcesoFallido)
+		}
+
+		codigo := resultado.ExitCode
+		reiniciar := false
+		switch a.config.RestartPolicy {
+		case config.RestartAlways:
+			reiniciar = true
+		case config.RestartOnFailure:
+			reiniciar = codigo != 0
+		}
+
+		if !reiniciar {
+			a.almacen.marcarDetenido()
+			return
+		}
+
+		if a.config.MaxRetries > 0 && a.maquina.contarReintentos() >= a.config.MaxRetries {
+			a.almacen.marcarDetenido()
+			return
+		}
+
+		a.almacen.incrementarReintento()
+		retardo := restart.CalculateDelay(a.maquina.contarReintentos(), a.config.Backoff)
+		tiempo := time.Now().Add(retardo)
+		a.almacen.marcarEspera(&tiempo)
+		a.maquina.transicionar(EventoReinicioProgramado)
+		a.logger.LogInfo(a.config.Name, "reinicio programado en "+retardo.String())
+
+		timer := time.NewTimer(retardo)
+		select {
+		case <-timer.C:
+			// El tiempo de retardo terminó de manera natural, continuar al siguiente ciclo
+		case cmd, ok := <-a.canal:
+			timer.Stop()
+			if !ok {
+				return
+			}
+			switch cmd.tipo {
+			case comandoReiniciar:
+				a.logger.LogInfo(a.config.Name, "espera cancelada por reinicio manual por API")
+				a.maquina = nuevoEstadoMaquina()
+				continue
+			case comandoDetener:
+				a.logger.LogInfo(a.config.Name, "espera cancelada por detención manual")
+				a.almacen.marcarDetenido()
+				a.maquina.transicionar(EventoProcesoDeteniendo)
+				return
+			}
+		case <-ctx.Done():
+			timer.Stop()
+			a.logger.LogInfo(a.config.Name, "espera cancelada")
+			return
+		}
 	}
-	a.almacen.actualizarDesdeResultado(*resultado)
-	a.almacen.marcarIniciado(resultado.PID)
-	exito := resultado.Success() && !resultado.TerminatedBySignal
-	if exito {
-		a.almacen.marcarEjecutando()
-		a.maquina.transicionar(EventoProcesoSalido)
-	} else {
-		a.almacen.marcarFallido()
-		a.maquina.transicionar(EventoProcesoFallido)
-	}
-	codigo := resultado.ExitCode
-	reiniciar := false
-	switch a.config.RestartPolicy {
-	case config.RestartAlways:
-		reiniciar = true
-	case config.RestartOnFailure:
-		reiniciar = codigo != 0
-	}
-	if !reiniciar {
-		a.almacen.marcarDetenido()
-		return
-	}
-	if a.config.MaxRetries > 0 && a.maquina.contarReintentos() >= a.config.MaxRetries {
-		a.almacen.marcarDetenido()
-		return
-	}
-	a.almacen.incrementarReintento()
-	retardo := restart.CalculateDelay(a.maquina.contarReintentos(), a.config.Backoff)
-	tiempo := time.Now().Add(retardo)
-	a.almacen.marcarEspera(&tiempo)
-	a.maquina.transicionar(EventoReinicioProgramado)
-	a.logger.LogInfo(a.config.Name, "reinicio programado en "+retardo.String())
-	if err := restart.Wait(ctx, retardo); err != nil {
-		a.logger.LogInfo(a.config.Name, "espera cancelada")
-		return
-	}
-	a.ejecutarProceso(ctx)
 }
